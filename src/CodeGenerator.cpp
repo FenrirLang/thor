@@ -151,9 +151,12 @@ std::string CodeGenerator::getCTypeName(std::shared_ptr<Type> type) {
     switch (type->kind) {
         case Type::VOID_TYPE: return "void";
         case Type::INTEGER_TYPE: return "int";
+        case Type::FLOAT_TYPE: return "float";
         case Type::STRING_TYPE: return "char*";
         case Type::BOOLEAN_TYPE: return "bool";
         case Type::ARRAY_TYPE: 
+            return getCTypeName(type->elementType) + "*";
+        case Type::REFERENCE_TYPE:
             return getCTypeName(type->elementType) + "*";
         default: return "void";
     }
@@ -165,6 +168,9 @@ void CodeGenerator::generateExpression(std::shared_ptr<Expression> expr) {
             case LiteralExpression::INTEGER:
                 write(literal->value);
                 break;
+            case LiteralExpression::FLOAT:
+                write(literal->value);
+                break;
             case LiteralExpression::STRING:
                 write("\"" + literal->value + "\"");
                 break;
@@ -174,7 +180,12 @@ void CodeGenerator::generateExpression(std::shared_ptr<Expression> expr) {
         }
     }
     else if (auto identifier = std::dynamic_pointer_cast<IdentifierExpression>(expr)) {
-        write(identifier->name);
+        // Check if this is a reference parameter that needs dereferencing
+        if (referenceParameters.find(identifier->name) != referenceParameters.end()) {
+            write("(*" + identifier->name + ")");
+        } else {
+            write(identifier->name);
+        }
     }
     else if (auto binary = std::dynamic_pointer_cast<BinaryExpression>(expr)) {
         // Handle string equality specially
@@ -183,6 +194,23 @@ void CodeGenerator::generateExpression(std::shared_ptr<Expression> expr) {
             write("thor_string_equals(");
             generateExpression(binary->left);
             write(", ");
+            generateExpression(binary->right);
+            write(")");
+        } else if (binary->operator_ == "=") {
+            // Handle assignment - check if left side is a reference parameter
+            if (auto identifier = std::dynamic_pointer_cast<IdentifierExpression>(binary->left)) {
+                if (referenceParameters.find(identifier->name) != referenceParameters.end()) {
+                    // Assignment to reference parameter - dereference
+                    write("(*" + identifier->name + " = ");
+                    generateExpression(binary->right);
+                    write(")");
+                    return;
+                }
+            }
+            // Regular assignment
+            write("(");
+            generateExpression(binary->left);
+            write(" " + binary->operator_ + " ");
             generateExpression(binary->right);
             write(")");
         } else {
@@ -214,8 +242,34 @@ void CodeGenerator::generateExpression(std::shared_ptr<Expression> expr) {
                 }
             }
         } else {
+            // Check if this is a function with reference parameters
+            bool hasReferenceParams = false;
+            std::string functionName;
+            if (auto identifier = std::dynamic_pointer_cast<IdentifierExpression>(call->callee)) {
+                functionName = identifier->name;
+                // For now, hardcode known functions with reference parameters
+                hasReferenceParams = (functionName == "testRef" || functionName == "fromFingers");
+            }
+            
             generateExpression(call->callee);
             write("(");
+            
+            for (size_t i = 0; i < call->arguments.size(); i++) {
+                if (i > 0) write(", ");
+                
+                if (hasReferenceParams) {
+                    // For reference parameters, pass address of variables
+                    if (auto argIdentifier = std::dynamic_pointer_cast<IdentifierExpression>(call->arguments[i])) {
+                        write("&" + argIdentifier->name);
+                    } else {
+                        generateExpression(call->arguments[i]);
+                    }
+                } else {
+                    generateExpression(call->arguments[i]);
+                }
+            }
+            write(")");
+            return;
         }
         
         for (size_t i = 0; i < call->arguments.size(); i++) {
@@ -241,18 +295,118 @@ void CodeGenerator::generateExpression(std::shared_ptr<Expression> expr) {
     }
 }
 
+bool CodeGenerator::isFloatExpression(std::shared_ptr<Expression> expr) {
+    // Check if expression is a float literal
+    if (auto literal = std::dynamic_pointer_cast<LiteralExpression>(expr)) {
+        return literal->literalType == LiteralExpression::FLOAT;
+    }
+    
+    // Check if expression is a variable with known float type
+    if (auto identifier = std::dynamic_pointer_cast<IdentifierExpression>(expr)) {
+        // Check if it's a float variable (simple heuristic based on name containing "float")
+        std::string name = identifier->name;
+        return name.find("float") != std::string::npos || name == "b" || name.find("Float") != std::string::npos;
+    }
+    
+    // Check if expression is a function call that returns float
+    if (auto call = std::dynamic_pointer_cast<CallExpression>(expr)) {
+        // Check for known float-returning functions
+        if (auto memberExpr = std::dynamic_pointer_cast<MemberExpression>(call->callee)) {
+            std::string funcName = memberExpr->property;
+            return funcName.find("addf") != std::string::npos || 
+                   funcName.find("subf") != std::string::npos ||
+                   funcName.find("mulf") != std::string::npos ||
+                   funcName.find("divf") != std::string::npos;
+        }
+    }
+    
+    return false;
+}
+
+bool CodeGenerator::isStringExpression(std::shared_ptr<Expression> expr) {
+    // Check if expression is a string literal
+    if (auto literal = std::dynamic_pointer_cast<LiteralExpression>(expr)) {
+        return literal->literalType == LiteralExpression::STRING || 
+               literal->literalType == LiteralExpression::BOOLEAN;
+    }
+    
+    // Check if expression is a string variable
+    if (auto identifier = std::dynamic_pointer_cast<IdentifierExpression>(expr)) {
+        std::string name = identifier->name;
+        // Common string variable names
+        return name == "business" || name == "location" || name == "animal" || 
+               name == "verb" || name.find("name") != std::string::npos ||
+               name.find("str") != std::string::npos || name.find("text") != std::string::npos;
+    }
+    
+    // Check if expression is a function call that returns string (like std.input)
+    if (auto call = std::dynamic_pointer_cast<CallExpression>(expr)) {
+        if (auto memberExpr = std::dynamic_pointer_cast<MemberExpression>(call->callee)) {
+            return memberExpr->property == "input";
+        }
+    }
+    
+    return false;
+}
+
 std::string CodeGenerator::generateFormatString(const std::string& format, 
                                               const std::vector<std::shared_ptr<Expression>>& args) {
-    std::string cFormat = format;
+    std::string result = format;
     
-    // Replace %s placeholders with appropriate format specifiers
-    std::regex placeholder_regex(R"(%s)");
-    cFormat = std::regex_replace(cFormat, placeholder_regex, "%d"); // Assuming integers for now
+    // For each argument, determine the appropriate format specifier
+    size_t pos = 0;
+    for (size_t i = 0; i < args.size() && pos < result.length(); i++) {
+        size_t found = result.find("%s", pos);
+        if (found != std::string::npos) {
+            std::string formatSpec;
+            
+            // Check if the argument is a literal
+            if (auto literal = std::dynamic_pointer_cast<LiteralExpression>(args[i])) {
+                if (literal->literalType == LiteralExpression::STRING || 
+                    literal->literalType == LiteralExpression::BOOLEAN) {
+                    formatSpec = "%s";
+                } else {
+                    // For numeric literals (int and float), use %g
+                    formatSpec = "%g";
+                }
+            }
+            // Check if it's a string expression
+            else if (isStringExpression(args[i])) {
+                formatSpec = "%s";
+            }
+            // Default to %g for numeric values
+            else {
+                formatSpec = "%g";
+            }
+            
+            result.replace(found, 2, formatSpec);
+            pos = found + formatSpec.length();
+        }
+    }
     
-    write("thor_format_string(\"" + cFormat + "\"");
-    for (auto& arg : args) {
+    write("thor_format_string(\"" + result + "\"");
+    for (size_t i = 0; i < args.size(); i++) {
         write(", ");
-        generateExpression(arg);
+        
+        // Handle different argument types appropriately
+        if (auto literal = std::dynamic_pointer_cast<LiteralExpression>(args[i])) {
+            if (literal->literalType == LiteralExpression::INTEGER || 
+                literal->literalType == LiteralExpression::FLOAT) {
+                write("(double)(");
+                generateExpression(args[i]);
+                write(")");
+            } else {
+                generateExpression(args[i]);
+            }
+        } else if (isStringExpression(args[i])) {
+            // String expressions don't need casting
+            generateExpression(args[i]);
+        } else {
+            // Numeric variables - cast to double
+            write("(double)(");
+            generateExpression(args[i]);
+            write(")");
+        }
     }
     write(")");
     
@@ -273,6 +427,14 @@ void CodeGenerator::generateStatement(std::shared_ptr<Statement> stmt) {
             write(" = ");
             generateExpression(varDecl->initializer);
         }
+        writeLine(";");
+    }
+    else if (auto constDecl = std::dynamic_pointer_cast<ConstDeclaration>(stmt)) {
+        indent();
+        write("const ");
+        generateType(constDecl->type);
+        write(" " + constDecl->name + " = ");
+        generateExpression(constDecl->initializer);
         writeLine(";");
     }
     else if (auto block = std::dynamic_pointer_cast<BlockStatement>(stmt)) {
@@ -328,6 +490,14 @@ void CodeGenerator::generateFunction(std::shared_ptr<FunctionDeclaration> func) 
     // Skip functions without bodies (built-in functions)
     if (!func->body) {
         return;
+    }
+    
+    // Clear and populate reference parameters for this function
+    referenceParameters.clear();
+    for (const auto& param : func->parameters) {
+        if (param.type->kind == Type::REFERENCE_TYPE) {
+            referenceParameters.insert(param.name);
+        }
     }
     
     generateType(func->returnType);

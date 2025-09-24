@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <vector>
 #include <sstream>
+#include <set>
 
 class CodeGenerator {
 private:
@@ -12,6 +13,7 @@ private:
     std::unordered_map<std::string, std::shared_ptr<Program>> modules;
     std::unordered_map<std::string, std::string> builtinFunctions;
     std::shared_ptr<Program> currentProgram; // Track current program being generated
+    std::set<std::string> referenceParameters; // Track reference parameters in current function
     
     void indent();
     void writeLine(const std::string& line = "");
@@ -29,6 +31,8 @@ private:
     // Helper methods
     std::string getTypeName(std::shared_ptr<Type> type);
     std::string getCTypeName(std::shared_ptr<Type> type);
+    bool isFloatExpression(std::shared_ptr<Expression> expr);
+    bool isStringExpression(std::shared_ptr<Expression> expr);
     std::string generateFormatString(const std::string& format, 
                                    const std::vector<std::shared_ptr<Expression>>& args);
     void initializeBuiltinFunctions();

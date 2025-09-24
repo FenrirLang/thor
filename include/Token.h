@@ -5,6 +5,7 @@
 enum class TokenType {
     // Literals
     INTEGER,
+    FLOAT,
     STRING,
     BOOLEAN,
     IDENTIFIER,
@@ -17,7 +18,9 @@ enum class TokenType {
     IF,
     ELSE,
     WHILE,
+    CONST,
     INT,
+    FLOAT_TYPE,
     STRING_TYPE,
     BOOLEAN_TYPE,
     VOID_TYPE,
@@ -38,6 +41,7 @@ enum class TokenType {
     OR,
     NOT,
     MODULO,
+    AMPERSAND,
     
     // Delimiters
     LEFT_PAREN,

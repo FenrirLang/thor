@@ -75,7 +75,7 @@ Token Lexer::nextToken() {
                 advance();
                 return Token(TokenType::AND, "&&", tokenLine, tokenColumn);
             }
-            break;
+            return Token(TokenType::AMPERSAND, "&", tokenLine, tokenColumn);
         case '|':
             if (peek() == '|') {
                 advance();
@@ -177,12 +177,22 @@ Token Lexer::makeNumber() {
     int tokenLine = line;
     int tokenColumn = column;
     std::string value;
+    bool isFloat = false;
     
     while (!isAtEnd() && isDigit(peek())) {
         value += advance();
     }
     
-    return Token(TokenType::INTEGER, value, tokenLine, tokenColumn);
+    // Check for decimal point
+    if (!isAtEnd() && peek() == '.' && isDigit(peek(1))) {
+        isFloat = true;
+        value += advance(); // consume '.'
+        while (!isAtEnd() && isDigit(peek())) {
+            value += advance();
+        }
+    }
+    
+    return Token(isFloat ? TokenType::FLOAT : TokenType::INTEGER, value, tokenLine, tokenColumn);
 }
 
 Token Lexer::makeIdentifier() {
@@ -219,7 +229,9 @@ TokenType Lexer::getKeywordType(const std::string& text) const {
         {"if", TokenType::IF},
         {"else", TokenType::ELSE},
         {"while", TokenType::WHILE},
+        {"const", TokenType::CONST},
         {"int", TokenType::INT},
+        {"float", TokenType::FLOAT_TYPE},
         {"string", TokenType::STRING_TYPE},
         {"boolean", TokenType::BOOLEAN_TYPE},
         {"void", TokenType::VOID_TYPE},

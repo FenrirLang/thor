@@ -18,7 +18,7 @@ struct Expression : ASTNode {
 
 struct LiteralExpression : Expression {
     std::string value;
-    enum LiteralType { INTEGER, STRING, BOOLEAN } literalType;
+    enum LiteralType { INTEGER, FLOAT, STRING, BOOLEAN } literalType;
     
     LiteralExpression(const std::string& val, LiteralType lt) 
         : value(val), literalType(lt) {}
@@ -96,6 +96,15 @@ struct VariableDeclaration : Statement {
         : name(n), type(t), initializer(init) {}
 };
 
+struct ConstDeclaration : Statement {
+    std::string name;
+    std::shared_ptr<Type> type;
+    std::shared_ptr<Expression> initializer;
+    
+    ConstDeclaration(const std::string& n, std::shared_ptr<Type> t, std::shared_ptr<Expression> init)
+        : name(n), type(t), initializer(init) {}
+};
+
 struct BlockStatement : Statement {
     std::vector<std::shared_ptr<Statement>> statements;
     
@@ -127,8 +136,8 @@ struct ReturnStatement : Statement {
 
 // Type system
 struct Type {
-    enum TypeKind { VOID_TYPE, INTEGER_TYPE, STRING_TYPE, BOOLEAN_TYPE, ARRAY_TYPE, FUNCTION_TYPE } kind;
-    std::shared_ptr<Type> elementType; // For arrays
+    enum TypeKind { VOID_TYPE, INTEGER_TYPE, FLOAT_TYPE, STRING_TYPE, BOOLEAN_TYPE, ARRAY_TYPE, FUNCTION_TYPE, REFERENCE_TYPE } kind;
+    std::shared_ptr<Type> elementType; // For arrays and references
     std::vector<std::shared_ptr<Type>> parameterTypes; // For functions
     std::shared_ptr<Type> returnType; // For functions
     
@@ -136,10 +145,16 @@ struct Type {
     
     static std::shared_ptr<Type> createVoid() { return std::make_shared<Type>(VOID_TYPE); }
     static std::shared_ptr<Type> createInt() { return std::make_shared<Type>(INTEGER_TYPE); }
+    static std::shared_ptr<Type> createFloat() { return std::make_shared<Type>(FLOAT_TYPE); }
     static std::shared_ptr<Type> createString() { return std::make_shared<Type>(STRING_TYPE); }
     static std::shared_ptr<Type> createBoolean() { return std::make_shared<Type>(BOOLEAN_TYPE); }
     static std::shared_ptr<Type> createArray(std::shared_ptr<Type> elem) {
         auto type = std::make_shared<Type>(ARRAY_TYPE);
+        type->elementType = elem;
+        return type;
+    }
+    static std::shared_ptr<Type> createReference(std::shared_ptr<Type> elem) {
+        auto type = std::make_shared<Type>(REFERENCE_TYPE);
         type->elementType = elem;
         return type;
     }

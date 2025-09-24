@@ -78,32 +78,48 @@ void Parser::consume(TokenType type, const std::string& message) {
 }
 
 std::shared_ptr<Type> Parser::parseType() {
+    std::shared_ptr<Type> baseType;
+    
     if (match({TokenType::VOID_TYPE})) {
-        return Type::createVoid();
+        baseType = Type::createVoid();
     } else if (match({TokenType::INT})) {
-        return Type::createInt();
+        baseType = Type::createInt();
+    } else if (match({TokenType::FLOAT_TYPE})) {
+        baseType = Type::createFloat();
     } else if (match({TokenType::STRING_TYPE})) {
-        return Type::createString();
+        baseType = Type::createString();
     } else if (match({TokenType::BOOLEAN_TYPE})) {
-        return Type::createBoolean();
+        baseType = Type::createBoolean();
     } else if (check(TokenType::IDENTIFIER)) {
         // For array types like "string[]"
         std::string typeName = advance().value;
         if (match({TokenType::LEFT_BRACKET})) {
             consume(TokenType::RIGHT_BRACKET, "Expected ']' after '['");
             if (typeName == "string") {
-                return Type::createArray(Type::createString());
+                baseType = Type::createArray(Type::createString());
             } else if (typeName == "int") {
-                return Type::createArray(Type::createInt());
+                baseType = Type::createArray(Type::createInt());
+            } else if (typeName == "float") {
+                baseType = Type::createArray(Type::createFloat());
             } else if (typeName == "boolean") {
-                return Type::createArray(Type::createBoolean());
+                baseType = Type::createArray(Type::createBoolean());
+            } else {
+                throw std::runtime_error("Unknown array type: " + typeName);
             }
+        } else {
+            // Handle other custom types if needed
+            throw std::runtime_error("Unknown type: " + typeName);
         }
-        // Handle other custom types if needed
-        throw std::runtime_error("Unknown type: " + typeName);
+    } else {
+        throw std::runtime_error("Expected type");
     }
     
-    throw std::runtime_error("Expected type");
+    // Handle reference modifier
+    if (match({TokenType::AMPERSAND})) {
+        return Type::createReference(baseType);
+    }
+    
+    return baseType;
 }
 
 std::shared_ptr<Expression> Parser::parseExpression() {
@@ -244,6 +260,10 @@ std::shared_ptr<Expression> Parser::parsePrimary() {
         return std::make_shared<LiteralExpression>(peek(-1).value, LiteralExpression::INTEGER);
     }
     
+    if (match({TokenType::FLOAT})) {
+        return std::make_shared<LiteralExpression>(peek(-1).value, LiteralExpression::FLOAT);
+    }
+    
     if (match({TokenType::STRING})) {
         std::string value = peek(-1).value;
         
@@ -312,8 +332,13 @@ std::shared_ptr<Statement> Parser::parseStatement() {
         return parseReturnStatement();
     }
     
+    // Check for const declaration
+    if (match({TokenType::CONST})) {
+        return parseConstDeclaration();
+    }
+    
     // Check for variable declaration - type followed by identifier
-    if (check(TokenType::INT) || check(TokenType::STRING_TYPE) || check(TokenType::BOOLEAN_TYPE)) {
+    if (check(TokenType::INT) || check(TokenType::FLOAT_TYPE) || check(TokenType::STRING_TYPE) || check(TokenType::BOOLEAN_TYPE)) {
         return parseVariableDeclaration();
     }
     
@@ -338,6 +363,18 @@ std::shared_ptr<VariableDeclaration> Parser::parseVariableDeclaration() {
     
     consume(TokenType::SEMICOLON, "Expected ';' after variable declaration");
     return std::make_shared<VariableDeclaration>(name, type, initializer);
+}
+
+std::shared_ptr<ConstDeclaration> Parser::parseConstDeclaration() {
+    std::shared_ptr<Type> type = parseType();
+    consume(TokenType::IDENTIFIER, "Expected constant name");
+    std::string name = peek(-1).value;
+    
+    consume(TokenType::ASSIGN, "Expected '=' after constant name");
+    std::shared_ptr<Expression> initializer = parseExpression();
+    
+    consume(TokenType::SEMICOLON, "Expected ';' after constant declaration");
+    return std::make_shared<ConstDeclaration>(name, type, initializer);
 }
 
 std::shared_ptr<BlockStatement> Parser::parseBlock() {
@@ -404,23 +441,8 @@ std::shared_ptr<FunctionDeclaration> Parser::parseFunctionDeclaration() {
     std::vector<Parameter> parameters;
     if (!check(TokenType::RIGHT_PAREN)) {
         do {
-            // Parse parameter type (which could be an array type)
-            std::shared_ptr<Type> paramType;
-            if (match({TokenType::INT})) {
-                paramType = Type::createInt();
-            } else if (match({TokenType::STRING_TYPE})) {
-                paramType = Type::createString();
-            } else if (match({TokenType::BOOLEAN_TYPE})) {
-                paramType = Type::createBoolean();
-            } else {
-                throw std::runtime_error("Expected parameter type");
-            }
-            
-            // Check for array type
-            if (match({TokenType::LEFT_BRACKET})) {
-                consume(TokenType::RIGHT_BRACKET, "Expected ']' after '['");
-                paramType = Type::createArray(paramType);
-            }
+            // Parse parameter type (including references and arrays)
+            std::shared_ptr<Type> paramType = parseType();
             
             consume(TokenType::IDENTIFIER, "Expected parameter name");
             std::string paramName = peek(-1).value;

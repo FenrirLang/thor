@@ -33,6 +33,7 @@ private:
     std::shared_ptr<Statement> parseStatement();
     std::shared_ptr<Statement> parseExpressionStatement();
     std::shared_ptr<VariableDeclaration> parseVariableDeclaration();
+    std::shared_ptr<ConstDeclaration> parseConstDeclaration();
     std::shared_ptr<BlockStatement> parseBlock();
     std::shared_ptr<IfStatement> parseIfStatement();
     std::shared_ptr<WhileStatement> parseWhileStatement();
