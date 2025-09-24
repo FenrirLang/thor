@@ -1,52 +1,40 @@
 #pragma once
 #include "AST.h"
 #include <string>
+#include <unordered_map>
+#include <vector>
 #include <sstream>
-#include <unordered_set>
-
-namespace Thor {
 
 class CodeGenerator {
 private:
     std::ostringstream output;
-    std::unordered_set<std::string> includedHeaders;
-    std::unordered_set<std::string> builtinFunctions;
     int indentLevel;
+    std::unordered_map<std::string, std::shared_ptr<Program>> modules;
+    std::unordered_map<std::string, std::string> builtinFunctions;
+    std::shared_ptr<Program> currentProgram; // Track current program being generated
     
     void indent();
+    void writeLine(const std::string& line = "");
+    void write(const std::string& text);
+    
+    // Generation methods
     void generateIncludes();
     void generateBuiltinFunctions();
+    void generateType(std::shared_ptr<Type> type);
+    void generateExpression(std::shared_ptr<Expression> expr);
+    void generateStatement(std::shared_ptr<Statement> stmt);
+    void generateFunction(std::shared_ptr<FunctionDeclaration> func);
+    void generateProgram(std::shared_ptr<Program> program);
     
-    void generateExpression(const Expression* expr);
-    void generateStatement(const Statement* stmt);
-    
-    void generateNumberLiteral(const NumberLiteral* lit);
-    void generateStringLiteral(const StringLiteral* lit);
-    void generateBoolLiteral(const BoolLiteral* lit);
-    void generateIdentifier(const Identifier* id);
-    void generateBinaryOperation(const BinaryOperation* op);
-    void generateUnaryOperation(const UnaryOperation* op);
-    void generateFunctionCall(const FunctionCall* call);
-    
-    void generateVariableDeclaration(const VariableDeclaration* decl);
-    void generateAssignment(const Assignment* assign);
-    void generateExpressionStatement(const ExpressionStatement* stmt);
-    void generateReturnStatement(const ReturnStatement* stmt);
-    void generateBlock(const Block* block, bool addBraces = true);
-    void generateIfStatement(const IfStatement* stmt);
-    void generateWhileStatement(const WhileStatement* stmt);
-    void generateFunctionDeclaration(const FunctionDeclaration* decl);
-    void generateExternDeclaration(const ExternDeclaration* decl);
-    
-    bool isBuiltinFunction(const std::string& name);
-    void addBuiltinFunction(const std::string& name);
-    std::string translateBuiltinFunction(const std::string& name);
-    void scanForBuiltins(const ASTNode* node);
+    // Helper methods
+    std::string getTypeName(std::shared_ptr<Type> type);
+    std::string getCTypeName(std::shared_ptr<Type> type);
+    std::string generateFormatString(const std::string& format, 
+                                   const std::vector<std::shared_ptr<Expression>>& args);
+    void initializeBuiltinFunctions();
     
 public:
     CodeGenerator();
-    std::string generate(const Program* program);
-    void reset();
+    std::string generate(std::shared_ptr<Program> program, 
+                        const std::unordered_map<std::string, std::shared_ptr<Program>>& importedModules);
 };
-
-} // namespace Thor

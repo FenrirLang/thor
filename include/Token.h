@@ -1,49 +1,45 @@
 #pragma once
 #include <string>
-#include <unordered_map>
-
-namespace Thor {
+#include <vector>
 
 enum class TokenType {
     // Literals
-    NUMBER,
+    INTEGER,
     STRING,
+    BOOLEAN,
     IDENTIFIER,
     
     // Keywords
-    INT,
-    FLOAT,
-    STRING_KW,
-    BOOL,
-    VOID,
+    PACKAGE,
+    IMPORT,
+    FUNC,
+    RETURN,
     IF,
     ELSE,
     WHILE,
-    FOR,
-    RETURN,
-    TRUE,
-    FALSE,
-    IMPORT,
-    EXTERN,
+    INT,
+    STRING_TYPE,
+    BOOLEAN_TYPE,
+    VOID_TYPE,
+    TRUE_VALUE,
+    FALSE_VALUE,
     
     // Operators
     PLUS,
     MINUS,
     MULTIPLY,
     DIVIDE,
-    MODULO,
     ASSIGN,
     EQUAL,
     NOT_EQUAL,
-    LESS,
-    LESS_EQUAL,
-    GREATER,
-    GREATER_EQUAL,
+    LESS_THAN,
+    GREATER_THAN,
     AND,
     OR,
     NOT,
+    MODULO,
     
-    // Punctuation
+    // Delimiters
     LEFT_PAREN,
     RIGHT_PAREN,
     LEFT_BRACE,
@@ -54,11 +50,13 @@ enum class TokenType {
     COMMA,
     DOT,
     COLON,
+    ARROW,
+    PERCENT,
     
     // Special
-    NAMESPACE_SEP,  // ::
+    NEWLINE,
     EOF_TOKEN,
-    INVALID
+    UNKNOWN
 };
 
 struct Token {
@@ -67,16 +65,6 @@ struct Token {
     int line;
     int column;
     
-    Token(TokenType t = TokenType::INVALID, const std::string& v = "", int l = 0, int c = 0)
+    Token(TokenType t, const std::string& v, int l, int c)
         : type(t), value(v), line(l), column(c) {}
 };
-
-class TokenInfo {
-public:
-    static const std::unordered_map<std::string, TokenType> keywords;
-    static std::string toString(TokenType type);
-    static bool isKeyword(const std::string& text);
-    static TokenType getKeywordType(const std::string& text);
-};
-
-} // namespace Thor

@@ -1,30 +1,20 @@
 #pragma once
 #include "AST.h"
 #include <string>
+#include <unordered_map>
 #include <vector>
-#include <unordered_set>
-#include <memory>
-
-namespace Thor {
 
 class ImportProcessor {
 private:
-    std::unordered_set<std::string> processedFiles;
+    std::unordered_map<std::string, std::shared_ptr<Program>> moduleCache;
     std::vector<std::string> searchPaths;
     
-    std::string findModule(const std::string& moduleName, const std::string& currentDir);
-    std::string readFile(const std::string& filename);
-    std::unique_ptr<Program> parseFile(const std::string& filename);
+    std::string resolveModulePath(const std::string& module) const;
+    std::shared_ptr<Program> loadModule(const std::string& module);
     
 public:
     ImportProcessor();
     void addSearchPath(const std::string& path);
-    
-    // Process imports and return a merged program
-    std::unique_ptr<Program> processImports(std::unique_ptr<Program> mainProgram, const std::string& mainFile);
-    
-    // Get all processed files (for dependency tracking)
-    const std::unordered_set<std::string>& getProcessedFiles() const;
+    std::shared_ptr<Program> processImports(std::shared_ptr<Program> program);
+    std::unordered_map<std::string, std::shared_ptr<Program>> getLoadedModules() const;
 };
-
-} // namespace Thor

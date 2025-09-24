@@ -1,372 +1,363 @@
 #include "CodeGenerator.h"
-#include <iostream>
+#include <algorithm>
+#include <regex>
 
-namespace Thor {
+CodeGenerator::CodeGenerator() : indentLevel(0) {
+    initializeBuiltinFunctions();
+}
 
-CodeGenerator::CodeGenerator() : indentLevel(0) {}
-
-void CodeGenerator::reset() {
-    output.str("");
+std::string CodeGenerator::generate(std::shared_ptr<Program> program, 
+                                  const std::unordered_map<std::string, std::shared_ptr<Program>>& importedModules) {
     output.clear();
-    includedHeaders.clear();
-    builtinFunctions.clear();
+    output.str("");
     indentLevel = 0;
-}
-
-void CodeGenerator::indent() {
-    for (int i = 0; i < indentLevel; ++i) {
-        output << "    ";
-    }
-}
-
-void CodeGenerator::generateIncludes() {
-    output << "#include <stdio.h>\n";
-    output << "#include <stdlib.h>\n";
-    output << "#include <string.h>\n";
-    output << "\n";
-}
-
-void CodeGenerator::generateBuiltinFunctions() {
-    if (builtinFunctions.count("std::println")) {
-        output << "// Built-in function for std::println\n";
-        output << "void thor_println(const char* str) {\n";
-        output << "    printf(\"%s\\n\", str);\n";
-        output << "}\n\n";
-    }
-    
-    if (builtinFunctions.count("std::print")) {
-        output << "// Built-in function for std::print\n";
-        output << "void thor_print(const char* str) {\n";
-        output << "    printf(\"%s\", str);\n";
-        output << "}\n\n";
-    }
-}
-
-std::string CodeGenerator::generate(const Program* program) {
-    reset();
-    
-    // First pass: collect builtin function usage by scanning the AST
-    for (const auto& stmt : program->statements) {
-        scanForBuiltins(stmt.get());
-    }
+    modules = importedModules;
     
     generateIncludes();
     generateBuiltinFunctions();
     
-    // Generate all statements
-    for (const auto& stmt : program->statements) {
-        generateStatement(stmt.get());
-        output << "\n";
+    // Generate code for all modules first
+    for (const auto& [moduleName, moduleProgram] : modules) {
+        generateProgram(moduleProgram);
+        writeLine();
     }
+    
+    // Generate main program
+    generateProgram(program);
     
     return output.str();
 }
 
-void CodeGenerator::generateExpression(const Expression* expr) {
-    if (auto numLit = dynamic_cast<const NumberLiteral*>(expr)) {
-        generateNumberLiteral(numLit);
-    } else if (auto strLit = dynamic_cast<const StringLiteral*>(expr)) {
-        generateStringLiteral(strLit);
-    } else if (auto boolLit = dynamic_cast<const BoolLiteral*>(expr)) {
-        generateBoolLiteral(boolLit);
-    } else if (auto id = dynamic_cast<const Identifier*>(expr)) {
-        generateIdentifier(id);
-    } else if (auto binOp = dynamic_cast<const BinaryOperation*>(expr)) {
-        generateBinaryOperation(binOp);
-    } else if (auto unOp = dynamic_cast<const UnaryOperation*>(expr)) {
-        generateUnaryOperation(unOp);
-    } else if (auto call = dynamic_cast<const FunctionCall*>(expr)) {
-        generateFunctionCall(call);
+void CodeGenerator::generateIncludes() {
+    writeLine("#include <stdio.h>");
+    writeLine("#include <stdlib.h>");
+    writeLine("#include <string.h>");
+    writeLine("#include <stdbool.h>");
+    writeLine("#include <stdarg.h>");
+    writeLine();
+}
+
+void CodeGenerator::indent() {
+    for (int i = 0; i < indentLevel; i++) {
+        output << "    ";
     }
 }
 
-void CodeGenerator::generateStatement(const Statement* stmt) {
-    if (auto varDecl = dynamic_cast<const VariableDeclaration*>(stmt)) {
-        generateVariableDeclaration(varDecl);
-    } else if (auto assign = dynamic_cast<const Assignment*>(stmt)) {
-        generateAssignment(assign);
-    } else if (auto exprStmt = dynamic_cast<const ExpressionStatement*>(stmt)) {
-        generateExpressionStatement(exprStmt);
-    } else if (auto retStmt = dynamic_cast<const ReturnStatement*>(stmt)) {
-        generateReturnStatement(retStmt);
-    } else if (auto block = dynamic_cast<const Block*>(stmt)) {
-        generateBlock(block);
-    } else if (auto ifStmt = dynamic_cast<const IfStatement*>(stmt)) {
-        generateIfStatement(ifStmt);
-    } else if (auto whileStmt = dynamic_cast<const WhileStatement*>(stmt)) {
-        generateWhileStatement(whileStmt);
-    } else if (auto funcDecl = dynamic_cast<const FunctionDeclaration*>(stmt)) {
-        generateFunctionDeclaration(funcDecl);
-    } else if (auto externDecl = dynamic_cast<const ExternDeclaration*>(stmt)) {
-        generateExternDeclaration(externDecl);
-    } else if (auto importStmt = dynamic_cast<const ImportStatement*>(stmt)) {
-        // Import statements should have been processed by ImportProcessor
-        // This is just for safety - they should not appear here
+void CodeGenerator::writeLine(const std::string& line) {
+    if (!line.empty()) {
         indent();
-        output << "// Import: " << importStmt->moduleName;
+        output << line;
     }
+    output << "\n";
 }
 
-void CodeGenerator::generateNumberLiteral(const NumberLiteral* lit) {
-    output << lit->value;
+void CodeGenerator::write(const std::string& text) {
+    output << text;
 }
 
-void CodeGenerator::generateStringLiteral(const StringLiteral* lit) {
-    output << "\"" << lit->value << "\"";
+void CodeGenerator::generateBuiltinFunctions() {
+    // String input function
+    writeLine("char* thor_input(const char* prompt) {");
+    indentLevel++;
+    writeLine("printf(\"%s\", prompt);");
+    writeLine("char* buffer = malloc(1024);");
+    writeLine("fgets(buffer, 1024, stdin);");
+    writeLine("// Remove newline");
+    writeLine("int len = strlen(buffer);");
+    writeLine("if (len > 0 && buffer[len-1] == '\\n') {");
+    indentLevel++;
+    writeLine("buffer[len-1] = '\\0';");
+    indentLevel--;
+    writeLine("}");
+    writeLine("return buffer;");
+    indentLevel--;
+    writeLine("}");
+    writeLine();
+    
+    // Print function
+    writeLine("void thor_println(const char* str) {");
+    indentLevel++;
+    writeLine("printf(\"%s\\n\", str);");
+    indentLevel--;
+    writeLine("}");
+    writeLine();
+    
+    // String comparison function
+    writeLine("bool thor_string_equals(const char* a, const char* b) {");
+    indentLevel++;
+    writeLine("return strcmp(a, b) == 0;");
+    indentLevel--;
+    writeLine("}");
+    writeLine();
+    
+    // Format string function
+    writeLine("char* thor_format_string(const char* format, ...) {");
+    indentLevel++;
+    writeLine("va_list args;");
+    writeLine("va_start(args, format);");
+    writeLine("char* buffer = malloc(1024);");
+    writeLine("vsnprintf(buffer, 1024, format, args);");
+    writeLine("va_end(args);");
+    writeLine("return buffer;");
+    indentLevel--;
+    writeLine("}");
+    writeLine();
 }
 
-void CodeGenerator::generateBoolLiteral(const BoolLiteral* lit) {
-    output << (lit->value ? "1" : "0");
-}
-
-void CodeGenerator::generateIdentifier(const Identifier* id) {
-    output << id->name;
-}
-
-void CodeGenerator::generateBinaryOperation(const BinaryOperation* op) {
-    output << "(";
-    generateExpression(op->left.get());
-    output << " " << op->operator_ << " ";
-    generateExpression(op->right.get());
-    output << ")";
-}
-
-void CodeGenerator::generateUnaryOperation(const UnaryOperation* op) {
-    output << op->operator_;
-    output << "(";
-    generateExpression(op->operand.get());
-    output << ")";
-}
-
-void CodeGenerator::generateFunctionCall(const FunctionCall* call) {
-    if (isBuiltinFunction(call->name)) {
-        addBuiltinFunction(call->name);
-        output << translateBuiltinFunction(call->name);
-    } else {
-        output << call->name;
+void CodeGenerator::generateProgram(std::shared_ptr<Program> program) {
+    currentProgram = program; // Set current program context
+    
+    // Generate forward declarations for functions
+    for (auto& stmt : program->statements) {
+        if (auto funcDecl = std::dynamic_pointer_cast<FunctionDeclaration>(stmt)) {
+            // Skip built-in functions without bodies
+            if (!funcDecl->body) {
+                continue;
+            }
+            
+            generateType(funcDecl->returnType);
+            write(" ");
+            if (program->package && program->package->name != "main") {
+                write(program->package->name + "_");
+            }
+            write(funcDecl->name + "(");
+            
+            for (size_t i = 0; i < funcDecl->parameters.size(); i++) {
+                if (i > 0) write(", ");
+                generateType(funcDecl->parameters[i].type);
+                write(" " + funcDecl->parameters[i].name);
+            }
+            
+            writeLine(");");
+        }
     }
     
-    output << "(";
-    for (size_t i = 0; i < call->arguments.size(); ++i) {
-        if (i > 0) output << ", ";
-        generateExpression(call->arguments[i].get());
-    }
-    output << ")";
-}
-
-void CodeGenerator::generateVariableDeclaration(const VariableDeclaration* decl) {
-    indent();
-    output << typeToCType(decl->type) << " " << decl->name;
-    
-    if (decl->initializer) {
-        output << " = ";
-        generateExpression(decl->initializer.get());
+    if (!program->statements.empty()) {
+        writeLine();
     }
     
-    output << ";";
-}
-
-void CodeGenerator::generateAssignment(const Assignment* assign) {
-    indent();
-    output << assign->name << " = ";
-    generateExpression(assign->value.get());
-    output << ";";
-}
-
-void CodeGenerator::generateExpressionStatement(const ExpressionStatement* stmt) {
-    indent();
-    generateExpression(stmt->expression.get());
-    output << ";";
-}
-
-void CodeGenerator::generateReturnStatement(const ReturnStatement* stmt) {
-    indent();
-    output << "return";
-    if (stmt->value) {
-        output << " ";
-        generateExpression(stmt->value.get());
-    }
-    output << ";";
-}
-
-void CodeGenerator::generateBlock(const Block* block, bool addBraces) {
-    if (addBraces) {
-        indent();
-        output << "{\n";
-        indentLevel++;
-    }
-    
-    for (const auto& stmt : block->statements) {
-        generateStatement(stmt.get());
-        output << "\n";
-    }
-    
-    if (addBraces) {
-        indentLevel--;
-        indent();
-        output << "}";
+    // Generate function implementations
+    for (auto& stmt : program->statements) {
+        generateStatement(stmt);
+        writeLine();
     }
 }
 
-void CodeGenerator::generateIfStatement(const IfStatement* stmt) {
-    indent();
-    output << "if (";
-    generateExpression(stmt->condition.get());
-    output << ") ";
-    
-    if (auto block = dynamic_cast<const Block*>(stmt->thenStatement.get())) {
-        output << "{\n";
-        indentLevel++;
-        generateBlock(block, false);
-        indentLevel--;
-        indent();
-        output << "}";
-    } else {
-        output << "\n";
-        indentLevel++;
-        generateStatement(stmt->thenStatement.get());
-        indentLevel--;
+void CodeGenerator::generateType(std::shared_ptr<Type> type) {
+    write(getCTypeName(type));
+}
+
+std::string CodeGenerator::getCTypeName(std::shared_ptr<Type> type) {
+    switch (type->kind) {
+        case Type::VOID_TYPE: return "void";
+        case Type::INTEGER_TYPE: return "int";
+        case Type::STRING_TYPE: return "char*";
+        case Type::BOOLEAN_TYPE: return "bool";
+        case Type::ARRAY_TYPE: 
+            return getCTypeName(type->elementType) + "*";
+        default: return "void";
     }
-    
-    if (stmt->elseStatement) {
-        output << " else ";
-        
-        if (auto block = dynamic_cast<const Block*>(stmt->elseStatement.get())) {
-            output << "{\n";
-            indentLevel++;
-            generateBlock(block, false);
-            indentLevel--;
-            indent();
-            output << "}";
+}
+
+void CodeGenerator::generateExpression(std::shared_ptr<Expression> expr) {
+    if (auto literal = std::dynamic_pointer_cast<LiteralExpression>(expr)) {
+        switch (literal->literalType) {
+            case LiteralExpression::INTEGER:
+                write(literal->value);
+                break;
+            case LiteralExpression::STRING:
+                write("\"" + literal->value + "\"");
+                break;
+            case LiteralExpression::BOOLEAN:
+                write(literal->value == "true" ? "true" : "false");
+                break;
+        }
+    }
+    else if (auto identifier = std::dynamic_pointer_cast<IdentifierExpression>(expr)) {
+        write(identifier->name);
+    }
+    else if (auto binary = std::dynamic_pointer_cast<BinaryExpression>(expr)) {
+        // Handle string equality specially
+        if (binary->operator_ == "==") {
+            // Check if we're comparing strings
+            write("thor_string_equals(");
+            generateExpression(binary->left);
+            write(", ");
+            generateExpression(binary->right);
+            write(")");
         } else {
-            output << "\n";
+            write("(");
+            generateExpression(binary->left);
+            write(" " + binary->operator_ + " ");
+            generateExpression(binary->right);
+            write(")");
+        }
+    }
+    else if (auto unary = std::dynamic_pointer_cast<UnaryExpression>(expr)) {
+        write("(" + unary->operator_);
+        generateExpression(unary->operand);
+        write(")");
+    }
+    else if (auto call = std::dynamic_pointer_cast<CallExpression>(expr)) {
+        if (auto member = std::dynamic_pointer_cast<MemberExpression>(call->callee)) {
+            // Handle module function calls like std.println or math.add
+            if (auto obj = std::dynamic_pointer_cast<IdentifierExpression>(member->object)) {
+                if (obj->name == "std") {
+                    if (member->property == "println") {
+                        write("thor_println(");
+                    } else if (member->property == "input") {
+                        write("thor_input(");
+                    }
+                } else {
+                    // Other module calls
+                    write(obj->name + "_" + member->property + "(");
+                }
+            }
+        } else {
+            generateExpression(call->callee);
+            write("(");
+        }
+        
+        for (size_t i = 0; i < call->arguments.size(); i++) {
+            if (i > 0) write(", ");
+            generateExpression(call->arguments[i]);
+        }
+        write(")");
+    }
+    else if (auto member = std::dynamic_pointer_cast<MemberExpression>(expr)) {
+        generateExpression(member->object);
+        write("." + member->property);
+    }
+    else if (auto formatStr = std::dynamic_pointer_cast<FormatStringExpression>(expr)) {
+        generateFormatString(formatStr->format, formatStr->arguments);
+    }
+    else if (auto array = std::dynamic_pointer_cast<ArrayExpression>(expr)) {
+        write("{");
+        for (size_t i = 0; i < array->elements.size(); i++) {
+            if (i > 0) write(", ");
+            generateExpression(array->elements[i]);
+        }
+        write("}");
+    }
+}
+
+std::string CodeGenerator::generateFormatString(const std::string& format, 
+                                              const std::vector<std::shared_ptr<Expression>>& args) {
+    std::string cFormat = format;
+    
+    // Replace %s placeholders with appropriate format specifiers
+    std::regex placeholder_regex(R"(%s)");
+    cFormat = std::regex_replace(cFormat, placeholder_regex, "%d"); // Assuming integers for now
+    
+    write("thor_format_string(\"" + cFormat + "\"");
+    for (auto& arg : args) {
+        write(", ");
+        generateExpression(arg);
+    }
+    write(")");
+    
+    return "";
+}
+
+void CodeGenerator::generateStatement(std::shared_ptr<Statement> stmt) {
+    if (auto exprStmt = std::dynamic_pointer_cast<ExpressionStatement>(stmt)) {
+        indent();
+        generateExpression(exprStmt->expression);
+        writeLine(";");
+    }
+    else if (auto varDecl = std::dynamic_pointer_cast<VariableDeclaration>(stmt)) {
+        indent();
+        generateType(varDecl->type);
+        write(" " + varDecl->name);
+        if (varDecl->initializer) {
+            write(" = ");
+            generateExpression(varDecl->initializer);
+        }
+        writeLine(";");
+    }
+    else if (auto block = std::dynamic_pointer_cast<BlockStatement>(stmt)) {
+        writeLine("{");
+        indentLevel++;
+        for (auto& statement : block->statements) {
+            generateStatement(statement);
+        }
+        indentLevel--;
+        writeLine("}");
+    }
+    else if (auto ifStmt = std::dynamic_pointer_cast<IfStatement>(stmt)) {
+        indent();
+        write("if (");
+        generateExpression(ifStmt->condition);
+        writeLine(") {");
+        indentLevel++;
+        generateStatement(ifStmt->thenBranch);
+        indentLevel--;
+        if (ifStmt->elseBranch) {
+            writeLine("} else {");
             indentLevel++;
-            generateStatement(stmt->elseStatement.get());
+            generateStatement(ifStmt->elseBranch);
             indentLevel--;
         }
+        writeLine("}");
     }
-}
-
-void CodeGenerator::generateWhileStatement(const WhileStatement* stmt) {
-    indent();
-    output << "while (";
-    generateExpression(stmt->condition.get());
-    output << ") ";
-    
-    if (auto block = dynamic_cast<const Block*>(stmt->body.get())) {
-        output << "{\n";
-        indentLevel++;
-        generateBlock(block, false);
-        indentLevel--;
+    else if (auto whileStmt = std::dynamic_pointer_cast<WhileStatement>(stmt)) {
         indent();
-        output << "}";
-    } else {
-        output << "\n";
+        write("while (");
+        generateExpression(whileStmt->condition);
+        writeLine(") {");
         indentLevel++;
-        generateStatement(stmt->body.get());
+        generateStatement(whileStmt->body);
         indentLevel--;
+        writeLine("}");
+    }
+    else if (auto returnStmt = std::dynamic_pointer_cast<ReturnStatement>(stmt)) {
+        indent();
+        write("return");
+        if (returnStmt->value) {
+            write(" ");
+            generateExpression(returnStmt->value);
+        }
+        writeLine(";");
+    }
+    else if (auto funcDecl = std::dynamic_pointer_cast<FunctionDeclaration>(stmt)) {
+        generateFunction(funcDecl);
     }
 }
 
-void CodeGenerator::generateFunctionDeclaration(const FunctionDeclaration* decl) {
-    output << typeToCType(decl->returnType) << " " << decl->name << "(";
-    
-    for (size_t i = 0; i < decl->parameters.size(); ++i) {
-        if (i > 0) output << ", ";
-        output << typeToCType(decl->parameters[i].type) << " " << decl->parameters[i].name;
-    }
-    
-    output << ") ";
-    
-    if (decl->body) {
-        output << "{\n";
-        indentLevel++;
-        generateBlock(decl->body.get(), false);
-        indentLevel--;
-        output << "}";
-    } else {
-        output << ";";
-    }
-}
-
-void CodeGenerator::generateExternDeclaration(const ExternDeclaration* decl) {
-    output << "extern " << typeToCType(decl->returnType) << " " << decl->name << "(";
-    
-    for (size_t i = 0; i < decl->parameters.size(); ++i) {
-        if (i > 0) output << ", ";
-        output << typeToCType(decl->parameters[i].type) << " " << decl->parameters[i].name;
+void CodeGenerator::generateFunction(std::shared_ptr<FunctionDeclaration> func) {
+    // Skip functions without bodies (built-in functions)
+    if (!func->body) {
+        return;
     }
     
-    output << ");";
-}
-
-bool CodeGenerator::isBuiltinFunction(const std::string& name) {
-    return name == "std::println" || name == "std::print" || name == "println" || name == "print";
-}
-
-void CodeGenerator::addBuiltinFunction(const std::string& name) {
-    if (name == "println" || name == "std::println") {
-        builtinFunctions.insert("std::println");
-    } else if (name == "print" || name == "std::print") {
-        builtinFunctions.insert("std::print");
+    generateType(func->returnType);
+    write(" ");
+    
+    // Add module prefix for non-main functions
+    std::string functionName = func->name;
+    if (currentProgram && currentProgram->package && currentProgram->package->name != "main") {
+        functionName = currentProgram->package->name + "_" + functionName;
     }
-}
-
-std::string CodeGenerator::translateBuiltinFunction(const std::string& name) {
-    if (name == "std::println" || name == "println") return "thor_println";
-    if (name == "std::print" || name == "print") return "thor_print";
-    return name;
-}
-
-void CodeGenerator::scanForBuiltins(const ASTNode* node) {
-    if (auto call = dynamic_cast<const FunctionCall*>(node)) {
-        if (isBuiltinFunction(call->name)) {
-            addBuiltinFunction(call->name);
-        }
-        // Scan arguments
-        for (const auto& arg : call->arguments) {
-            scanForBuiltins(arg.get());
-        }
-    } else if (auto binOp = dynamic_cast<const BinaryOperation*>(node)) {
-        scanForBuiltins(binOp->left.get());
-        scanForBuiltins(binOp->right.get());
-    } else if (auto unOp = dynamic_cast<const UnaryOperation*>(node)) {
-        scanForBuiltins(unOp->operand.get());
-    } else if (auto varDecl = dynamic_cast<const VariableDeclaration*>(node)) {
-        if (varDecl->initializer) {
-            scanForBuiltins(varDecl->initializer.get());
-        }
-    } else if (auto assign = dynamic_cast<const Assignment*>(node)) {
-        scanForBuiltins(assign->value.get());
-    } else if (auto exprStmt = dynamic_cast<const ExpressionStatement*>(node)) {
-        scanForBuiltins(exprStmt->expression.get());
-    } else if (auto retStmt = dynamic_cast<const ReturnStatement*>(node)) {
-        if (retStmt->value) {
-            scanForBuiltins(retStmt->value.get());
-        }
-    } else if (auto block = dynamic_cast<const Block*>(node)) {
-        for (const auto& stmt : block->statements) {
-            scanForBuiltins(stmt.get());
-        }
-    } else if (auto ifStmt = dynamic_cast<const IfStatement*>(node)) {
-        scanForBuiltins(ifStmt->condition.get());
-        scanForBuiltins(ifStmt->thenStatement.get());
-        if (ifStmt->elseStatement) {
-            scanForBuiltins(ifStmt->elseStatement.get());
-        }
-    } else if (auto whileStmt = dynamic_cast<const WhileStatement*>(node)) {
-        scanForBuiltins(whileStmt->condition.get());
-        scanForBuiltins(whileStmt->body.get());
-    } else if (auto funcDecl = dynamic_cast<const FunctionDeclaration*>(node)) {
-        if (funcDecl->body) {
-            scanForBuiltins(funcDecl->body.get());
-        }
-    } else if (auto externDecl = dynamic_cast<const ExternDeclaration*>(node)) {
-        // Extern declarations don't contain builtins, just skip
-    } else if (auto importStmt = dynamic_cast<const ImportStatement*>(node)) {
-        // Import statements should have been processed already
-        // No need to scan them for builtins
+    write(functionName + "(");
+    
+    for (size_t i = 0; i < func->parameters.size(); i++) {
+        if (i > 0) write(", ");
+        generateType(func->parameters[i].type);
+        write(" " + func->parameters[i].name);
     }
+    
+    writeLine(") {");
+    indentLevel++;
+    
+    for (auto& statement : func->body->statements) {
+        generateStatement(statement);
+    }
+    
+    indentLevel--;
+    writeLine("}");
 }
 
-} // namespace Thor
+void CodeGenerator::initializeBuiltinFunctions() {
+    builtinFunctions["std.println"] = "thor_println";
+    builtinFunctions["std.input"] = "thor_input";
+}

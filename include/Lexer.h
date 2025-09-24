@@ -3,36 +3,28 @@
 #include <string>
 #include <vector>
 
-namespace Thor {
-
 class Lexer {
 private:
     std::string source;
-    size_t position;
-    size_t line;
-    size_t column;
+    size_t current;
+    int line;
+    int column;
     
-    char currentChar() const;
-    char peekChar(size_t offset = 1) const;
-    void advance();
+    char peek(int offset = 0) const;
+    char advance();
     void skipWhitespace();
-    void skipLineComment();
-    void skipBlockComment();
-    
-    Token readNumber();
-    Token readString();
-    Token readIdentifier();
-    Token readOperator();
+    void skipComment();
+    Token makeString();
+    Token makeNumber();
+    Token makeIdentifier();
+    bool isAlpha(char c) const;
+    bool isDigit(char c) const;
+    bool isAlphaNumeric(char c) const;
+    TokenType getKeywordType(const std::string& text) const;
     
 public:
-    Lexer(const std::string& src);
-    
+    Lexer(const std::string& source);
     std::vector<Token> tokenize();
     Token nextToken();
-    
     bool isAtEnd() const;
-    int getCurrentLine() const { return static_cast<int>(line); }
-    int getCurrentColumn() const { return static_cast<int>(column); }
 };
-
-} // namespace Thor

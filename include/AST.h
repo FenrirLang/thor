@@ -1,233 +1,185 @@
 #pragma once
-#include <vector>
 #include <memory>
+#include <vector>
 #include <string>
 
-namespace Thor {
-
 // Forward declarations
-class ASTNode;
-class Expression;
-class Statement;
-
-// Basic types in Thor
-enum class Type {
-    INT,
-    FLOAT,
-    STRING,
-    BOOL,
-    VOID,
-    VOID_PTR,  // void* type for external function pointers
-    UNKNOWN
-};
-
-std::string typeToString(Type type);
-std::string typeToCType(Type type);
+struct Type;
 
 // Base AST Node
-class ASTNode {
-public:
+struct ASTNode {
     virtual ~ASTNode() = default;
-    virtual std::string toString(int indent = 0) const = 0;
-protected:
-    std::string getIndent(int level) const;
 };
 
-// Expression base class
-class Expression : public ASTNode {
-public:
-    Type type = Type::UNKNOWN;
+// Expression nodes
+struct Expression : ASTNode {
+    std::shared_ptr<Type> type;
 };
 
-// Statement base class  
-class Statement : public ASTNode {
-};
-
-// Literal expressions
-class NumberLiteral : public Expression {
-public:
+struct LiteralExpression : Expression {
     std::string value;
+    enum LiteralType { INTEGER, STRING, BOOLEAN } literalType;
     
-    NumberLiteral(const std::string& val);
-    std::string toString(int indent = 0) const override;
+    LiteralExpression(const std::string& val, LiteralType lt) 
+        : value(val), literalType(lt) {}
 };
 
-class StringLiteral : public Expression {
-public:
-    std::string value;
-    
-    StringLiteral(const std::string& val);
-    std::string toString(int indent = 0) const override;
-};
-
-class BoolLiteral : public Expression {
-public:
-    bool value;
-    
-    BoolLiteral(bool val);
-    std::string toString(int indent = 0) const override;
-};
-
-class Identifier : public Expression {
-public:
+struct IdentifierExpression : Expression {
     std::string name;
     
-    Identifier(const std::string& n);
-    std::string toString(int indent = 0) const override;
+    IdentifierExpression(const std::string& n) : name(n) {}
 };
 
-// Binary operations
-class BinaryOperation : public Expression {
-public:
-    std::unique_ptr<Expression> left;
+struct BinaryExpression : Expression {
+    std::shared_ptr<Expression> left;
     std::string operator_;
-    std::unique_ptr<Expression> right;
+    std::shared_ptr<Expression> right;
     
-    BinaryOperation(std::unique_ptr<Expression> l, const std::string& op, std::unique_ptr<Expression> r);
-    std::string toString(int indent = 0) const override;
+    BinaryExpression(std::shared_ptr<Expression> l, const std::string& op, std::shared_ptr<Expression> r)
+        : left(l), operator_(op), right(r) {}
 };
 
-// Unary operations
-class UnaryOperation : public Expression {
-public:
+struct UnaryExpression : Expression {
     std::string operator_;
-    std::unique_ptr<Expression> operand;
+    std::shared_ptr<Expression> operand;
     
-    UnaryOperation(const std::string& op, std::unique_ptr<Expression> expr);
-    std::string toString(int indent = 0) const override;
+    UnaryExpression(const std::string& op, std::shared_ptr<Expression> expr)
+        : operator_(op), operand(expr) {}
 };
 
-// Function calls
-class FunctionCall : public Expression {
-public:
+struct CallExpression : Expression {
+    std::shared_ptr<Expression> callee;
+    std::vector<std::shared_ptr<Expression>> arguments;
+    
+    CallExpression(std::shared_ptr<Expression> c, std::vector<std::shared_ptr<Expression>> args)
+        : callee(c), arguments(args) {}
+};
+
+struct MemberExpression : Expression {
+    std::shared_ptr<Expression> object;
+    std::string property;
+    
+    MemberExpression(std::shared_ptr<Expression> obj, const std::string& prop)
+        : object(obj), property(prop) {}
+};
+
+struct ArrayExpression : Expression {
+    std::vector<std::shared_ptr<Expression>> elements;
+    
+    ArrayExpression(std::vector<std::shared_ptr<Expression>> elems)
+        : elements(elems) {}
+};
+
+struct FormatStringExpression : Expression {
+    std::string format;
+    std::vector<std::shared_ptr<Expression>> arguments;
+    
+    FormatStringExpression(const std::string& fmt, std::vector<std::shared_ptr<Expression>> args)
+        : format(fmt), arguments(args) {}
+};
+
+// Statement nodes
+struct Statement : ASTNode {};
+
+struct ExpressionStatement : Statement {
+    std::shared_ptr<Expression> expression;
+    
+    ExpressionStatement(std::shared_ptr<Expression> expr) : expression(expr) {}
+};
+
+struct VariableDeclaration : Statement {
     std::string name;
-    std::vector<std::unique_ptr<Expression>> arguments;
+    std::shared_ptr<Type> type;
+    std::shared_ptr<Expression> initializer;
     
-    FunctionCall(const std::string& n);
-    void addArgument(std::unique_ptr<Expression> arg);
-    std::string toString(int indent = 0) const override;
+    VariableDeclaration(const std::string& n, std::shared_ptr<Type> t, std::shared_ptr<Expression> init = nullptr)
+        : name(n), type(t), initializer(init) {}
 };
 
-// Variable declarations
-class VariableDeclaration : public Statement {
-public:
-    Type type;
+struct BlockStatement : Statement {
+    std::vector<std::shared_ptr<Statement>> statements;
+    
+    BlockStatement(std::vector<std::shared_ptr<Statement>> stmts) : statements(stmts) {}
+};
+
+struct IfStatement : Statement {
+    std::shared_ptr<Expression> condition;
+    std::shared_ptr<Statement> thenBranch;
+    std::shared_ptr<Statement> elseBranch;
+    
+    IfStatement(std::shared_ptr<Expression> cond, std::shared_ptr<Statement> then, std::shared_ptr<Statement> els = nullptr)
+        : condition(cond), thenBranch(then), elseBranch(els) {}
+};
+
+struct WhileStatement : Statement {
+    std::shared_ptr<Expression> condition;
+    std::shared_ptr<Statement> body;
+    
+    WhileStatement(std::shared_ptr<Expression> cond, std::shared_ptr<Statement> b)
+        : condition(cond), body(b) {}
+};
+
+struct ReturnStatement : Statement {
+    std::shared_ptr<Expression> value;
+    
+    ReturnStatement(std::shared_ptr<Expression> val = nullptr) : value(val) {}
+};
+
+// Type system
+struct Type {
+    enum TypeKind { VOID_TYPE, INTEGER_TYPE, STRING_TYPE, BOOLEAN_TYPE, ARRAY_TYPE, FUNCTION_TYPE } kind;
+    std::shared_ptr<Type> elementType; // For arrays
+    std::vector<std::shared_ptr<Type>> parameterTypes; // For functions
+    std::shared_ptr<Type> returnType; // For functions
+    
+    Type(TypeKind k) : kind(k) {}
+    
+    static std::shared_ptr<Type> createVoid() { return std::make_shared<Type>(VOID_TYPE); }
+    static std::shared_ptr<Type> createInt() { return std::make_shared<Type>(INTEGER_TYPE); }
+    static std::shared_ptr<Type> createString() { return std::make_shared<Type>(STRING_TYPE); }
+    static std::shared_ptr<Type> createBoolean() { return std::make_shared<Type>(BOOLEAN_TYPE); }
+    static std::shared_ptr<Type> createArray(std::shared_ptr<Type> elem) {
+        auto type = std::make_shared<Type>(ARRAY_TYPE);
+        type->elementType = elem;
+        return type;
+    }
+};
+
+struct Parameter {
     std::string name;
-    std::unique_ptr<Expression> initializer;
+    std::shared_ptr<Type> type;
     
-    VariableDeclaration(Type t, const std::string& n, std::unique_ptr<Expression> init = nullptr);
-    std::string toString(int indent = 0) const override;
+    Parameter(const std::string& n, std::shared_ptr<Type> t) : name(n), type(t) {}
 };
 
-// Assignment statements
-class Assignment : public Statement {
-public:
-    std::string name;
-    std::unique_ptr<Expression> value;
-    
-    Assignment(const std::string& n, std::unique_ptr<Expression> val);
-    std::string toString(int indent = 0) const override;
-};
-
-// Expression statements
-class ExpressionStatement : public Statement {
-public:
-    std::unique_ptr<Expression> expression;
-    
-    ExpressionStatement(std::unique_ptr<Expression> expr);
-    std::string toString(int indent = 0) const override;
-};
-
-// Return statements
-class ReturnStatement : public Statement {
-public:
-    std::unique_ptr<Expression> value;
-    
-    ReturnStatement(std::unique_ptr<Expression> val = nullptr);
-    std::string toString(int indent = 0) const override;
-};
-
-// Import statements
-class ImportStatement : public Statement {
-public:
-    std::string moduleName;
-    
-    ImportStatement(const std::string& module);
-    std::string toString(int indent = 0) const override;
-};
-
-// Block statements
-class Block : public Statement {
-public:
-    std::vector<std::unique_ptr<Statement>> statements;
-    
-    void addStatement(std::unique_ptr<Statement> stmt);
-    std::string toString(int indent = 0) const override;
-};
-
-// If statements
-class IfStatement : public Statement {
-public:
-    std::unique_ptr<Expression> condition;
-    std::unique_ptr<Statement> thenStatement;
-    std::unique_ptr<Statement> elseStatement;
-    
-    IfStatement(std::unique_ptr<Expression> cond, std::unique_ptr<Statement> then, std::unique_ptr<Statement> els = nullptr);
-    std::string toString(int indent = 0) const override;
-};
-
-// While statements
-class WhileStatement : public Statement {
-public:
-    std::unique_ptr<Expression> condition;
-    std::unique_ptr<Statement> body;
-    
-    WhileStatement(std::unique_ptr<Expression> cond, std::unique_ptr<Statement> b);
-    std::string toString(int indent = 0) const override;
-};
-
-// Function parameters
-class Parameter {
-public:
-    Type type;
-    std::string name;
-    
-    Parameter(Type t, const std::string& n);
-};
-
-// Function declarations
-class FunctionDeclaration : public Statement {
-public:
-    Type returnType;
+struct FunctionDeclaration : Statement {
     std::string name;
     std::vector<Parameter> parameters;
-    std::unique_ptr<Block> body;
+    std::shared_ptr<Type> returnType;
+    std::shared_ptr<BlockStatement> body;
     
-    FunctionDeclaration(Type ret, const std::string& n);
-    void addParameter(Type type, const std::string& name);
-    void setBody(std::unique_ptr<Block> b);
-    std::string toString(int indent = 0) const override;
+    FunctionDeclaration(const std::string& n, std::vector<Parameter> params, 
+                       std::shared_ptr<Type> ret, std::shared_ptr<BlockStatement> b)
+        : name(n), parameters(params), returnType(ret), body(b) {}
 };
 
-// Extern function declarations
-class ExternDeclaration : public Statement {
-public:
-    Type returnType;
+struct PackageDeclaration : Statement {
     std::string name;
-    std::vector<Parameter> parameters;
     
-    ExternDeclaration(Type ret, const std::string& n);
-    void addParameter(Type type, const std::string& name);
-    std::string toString(int indent = 0) const override;
+    PackageDeclaration(const std::string& n) : name(n) {}
 };
 
-// Root program node
-class Program : public ASTNode {
-public:
-    std::vector<std::unique_ptr<Statement>> statements;
+struct ImportDeclaration : Statement {
+    std::string module;
     
-    void addStatement(std::unique_ptr<Statement> stmt);
-    std::string toString(int indent = 0) const override;
+    ImportDeclaration(const std::string& m) : module(m) {}
 };
 
-} // namespace Thor
+// Root node
+struct Program : ASTNode {
+    std::shared_ptr<PackageDeclaration> package;
+    std::vector<std::shared_ptr<ImportDeclaration>> imports;
+    std::vector<std::shared_ptr<Statement>> statements;
+    
+    Program() = default;
+};

@@ -1,59 +1,47 @@
 #pragma once
-#include "Token.h"
 #include "AST.h"
+#include "Token.h"
 #include <vector>
 #include <memory>
-#include <stdexcept>
-
-namespace Thor {
-
-class ParseError : public std::runtime_error {
-public:
-    ParseError(const std::string& message) : std::runtime_error(message) {}
-};
 
 class Parser {
 private:
     std::vector<Token> tokens;
     size_t current;
     
-    Token& currentToken();
-    const Token& currentToken() const;
-    Token& peekToken(size_t offset = 1);
-    void advance();
+    Token& peek(int offset = 0);
+    Token& advance();
+    bool check(TokenType type);
+    bool match(std::initializer_list<TokenType> types);
     bool isAtEnd() const;
-    bool check(TokenType type) const;
-    bool match(TokenType type);
-    Token consume(TokenType type, const std::string& message);
+    void consume(TokenType type, const std::string& message);
     
-    Type parseType();
+    // Parsing methods
+    std::shared_ptr<Type> parseType();
+    std::shared_ptr<Expression> parseExpression();
+    std::shared_ptr<Expression> parseAssignment();
+    std::shared_ptr<Expression> parseLogicalOr();
+    std::shared_ptr<Expression> parseLogicalAnd();
+    std::shared_ptr<Expression> parseEquality();
+    std::shared_ptr<Expression> parseComparison();
+    std::shared_ptr<Expression> parseTerm();
+    std::shared_ptr<Expression> parseFactor();
+    std::shared_ptr<Expression> parseUnary();
+    std::shared_ptr<Expression> parseCall();
+    std::shared_ptr<Expression> parsePrimary();
     
-    std::unique_ptr<Expression> expression();
-    std::unique_ptr<Expression> logicalOr();
-    std::unique_ptr<Expression> logicalAnd();
-    std::unique_ptr<Expression> equality();
-    std::unique_ptr<Expression> comparison();
-    std::unique_ptr<Expression> term();
-    std::unique_ptr<Expression> factor();
-    std::unique_ptr<Expression> unary();
-    std::unique_ptr<Expression> call();
-    std::unique_ptr<Expression> primary();
-    
-    std::unique_ptr<Statement> statement();
-    std::unique_ptr<Statement> declaration();
-    std::unique_ptr<Statement> importStatement();
-    std::unique_ptr<Statement> externDeclaration();
-    std::unique_ptr<Statement> variableDeclaration();
-    std::unique_ptr<Statement> functionDeclaration();
-    std::unique_ptr<Statement> ifStatement();
-    std::unique_ptr<Statement> whileStatement();
-    std::unique_ptr<Statement> returnStatement();
-    std::unique_ptr<Statement> expressionStatement();
-    std::unique_ptr<Block> block();
+    std::shared_ptr<Statement> parseStatement();
+    std::shared_ptr<Statement> parseExpressionStatement();
+    std::shared_ptr<VariableDeclaration> parseVariableDeclaration();
+    std::shared_ptr<BlockStatement> parseBlock();
+    std::shared_ptr<IfStatement> parseIfStatement();
+    std::shared_ptr<WhileStatement> parseWhileStatement();
+    std::shared_ptr<ReturnStatement> parseReturnStatement();
+    std::shared_ptr<FunctionDeclaration> parseFunctionDeclaration();
+    std::shared_ptr<PackageDeclaration> parsePackageDeclaration();
+    std::shared_ptr<ImportDeclaration> parseImportDeclaration();
     
 public:
-    Parser(const std::vector<Token>& tokens);
-    std::unique_ptr<Program> parse();
+    Parser(std::vector<Token> tokens);
+    std::shared_ptr<Program> parse();
 };
-
-} // namespace Thor
